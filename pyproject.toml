@@ -1,0 +1,10 @@
+[project]
+name = "mini-llm-systems"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.5.0",
+    "requests>=2.34.2",
+    "torch>=2.12.1",
+    "tqdm>=4.68.3",
+]
