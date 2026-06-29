@@ -43,7 +43,8 @@ class charDataset(Dataset):
         self.data_val = data[int(train_split*len(data)):]
     
     def __len__(self) -> int:
-        return len(self.data_train) if self.train else len(self.data_val)
+        n = len(self.data_train) if self.train else len(self.data_val)
+        return n - self.block_size
     
     def __getitem__(self, i: int) -> tuple[torch.Tensor, torch.Tensor]:
         if self.train:
@@ -69,7 +70,7 @@ def get_dataloaders(
     data = load_text(data_path)
     # Create Tokenizer
     tokenizer = CharTokenizer(data)
-    data = torch.Tensor(tokenizer.encode(data)) # encode the entire dataset, convert to tensors
+    data = torch.tensor(tokenizer.encode(data)) # encode the entire dataset, convert to tensors
     # Create Datasets
     train_dataset = charDataset(data, block_size, train_split)
     val_dataset = charDataset(data, block_size, train_split, train=False)

@@ -3,18 +3,29 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from dataclasses import dataclass
-from __future__ import annotations
 
-from minigpt_beta.train import GPTConfig
+@dataclass
+class GPTConfig:
+    # training/data hyperparameters
+    block_size: int = 64 # maximum context length for predictions
+    batch_size: int = 16 # number of sequences processed in parallel
     
+    # model arch hyperparameters
+    len_embed: int = 64 # embedding dimension
+    # len_head: int = 64 # QKV dimension
+    num_heads: int = 8 # in multi-head attention
+    num_layers: int = 8 # number of transformer blocks
+    
+    dropout: float = 0.1 # dropout probability
+
 class Head(nn.Module):
-    def __init__(self, config: GPTConfig):
+    def __init__(self):
         super().__init__()
-        self.qkv_dim = config.len_embed // config.num_heads
-        self.query = nn.Linear(config.len_embed, self.qkv_dim, bias=False)
-        self.key = nn.Linear(config.len_embed, self.qkv_dim, bias=False)
-        self.value = nn.Linear(config.len_embed, self.qkv_dim, bias=False)
-        self.register_buffer("tril", torch.tril(torch.ones(config.block_size, config.block_size)))
+        self.qkv_dim = GPTConfig.len_embed // GPTConfig.num_heads
+        self.query = nn.Linear(GPTConfig.len_embed, self.qkv_dim, bias=False)
+        self.key = nn.Linear(GPTConfig.len_embed, self.qkv_dim, bias=False)
+        self.value = nn.Linear(GPTConfig.len_embed, self.qkv_dim, bias=False)
+        self.register_buffer("tril", torch.tril(torch.ones(GPTConfig.block_size, GPTConfig.block_size)))
         
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -33,10 +44,10 @@ class Head(nn.Module):
         return out
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, config: GPTConfig):
+    def __init__(self):
         super().__init__()
-        self.heads = nn.ModuleList([Head(config) for _ in range(config.num_heads)])
-        self.proj = nn.Linear(config.len_embed, config.len_embed)
+        self.heads = nn.ModuleList([Head() for _ in range(GPTConfig.num_heads)])
+        self.proj = nn.Linear(GPTConfig.len_embed, GPTConfig.len_embed)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x = (B, T, len_embed)
@@ -45,10 +56,10 @@ class MultiHeadAttention(nn.Module):
         return out
         
 class FFN(nn.Module):
-    def __init__(self, config: GPTConfig):
+    def __init__(self):
         super().__init__()
-        self.proj1 = nn.Linear(config.len_embed, config.len_embed * 4)
-        self.proj2 = nn.Linear(config.len_embed * 4, config.len_embed)
+        self.proj1 = nn.Linear(GPTConfig.len_embed, GPTConfig.len_embed * 4)
+        self.proj2 = nn.Linear(GPTConfig.len_embed * 4, GPTConfig.len_embed)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x = (B, T, len_embed)
@@ -57,12 +68,12 @@ class FFN(nn.Module):
         return x
 
 class TransformerBlock(nn.Module):
-    def __init__(self, config: GPTConfig):
+    def __init__(self):
         super().__init__()
-        self.attention = MultiHeadAttention(config)
-        self.ffn = FFN(config)
-        self.ln1 = nn.LayerNorm(config.len_embed)
-        self.ln2 = nn.LayerNorm(config.len_embed)
+        self.attention = MultiHeadAttention()
+        self.ffn = FFN()
+        self.ln1 = nn.LayerNorm(GPTConfig.len_embed)
+        self.ln2 = nn.LayerNorm(GPTConfig.len_embed)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x + self.attention(self.ln1(x))
@@ -70,31 +81,56 @@ class TransformerBlock(nn.Module):
         return x
 
 class GPT(nn.Module):
-    def __init__(self, config: GPTConfig, vocab_size: int):
+    def __init__(self, vocab_size: int):
         super().__init__()
-        self.block_size = config.block_size
-        self.embed_table = nn.Embedding(vocab_size, config.len_embed)
-        self.pos_enc = nn.Embedding(config.block_size, config.len_embed)
-        self.transformer = nn.Sequential([TransformerBlock(config) for _ in range(config.num_layers)])
-        self.ln_final = nn.LayerNorm(config.len_embed)
-        self.proj_final = nn.Linear(config.len_embed, vocab_size)
+        self.block_size = GPTConfig.block_size
+        self.embed_table = nn.Embedding(vocab_size, GPTConfig.len_embed)
+        self.pos_enc = nn.Embedding(GPTConfig.block_size, GPTConfig.len_embed)
+        self.transformer = nn.Sequential(*[TransformerBlock() for _ in range(GPTConfig.num_layers)])
+        self.ln_final = nn.LayerNorm(GPTConfig.len_embed)
+        self.proj_final = nn.Linear(GPTConfig.len_embed, vocab_size)
     
-    def forward(self, x: torch.Tensor, y: torch.Tensor):
-        # x = (B, T), y = (B, T)
+    def forward(self, x: torch.Tensor, y: torch.Tensor | None = None):
+        B, T = x.shape # x = (B, T), y = (B, T)
+        
         x = self.embed_table(x) # (B, T, len_embed)
-        x = x + self.pos_enc(torch.arange(self.block_size)) # (B, T, len_embed) + (T, len_embed) = (B, T, len_embed)
+        x = x + self.pos_enc(torch.arange(T)) # (B, T, len_embed) + (T, len_embed) = (B, T, len_embed)
         
         x = self.transformer(x) # (B, T, len_embed)
         x = self.ln_final(x)
         logits: torch.Tensor = self.proj_final(x) # (B, T, vocab_size)
         
-        B, T, vocab_size = logits.shape
-        logits = logits.view(-1, vocab_size)
-        targets = y.view(-1)
-        loss = F.cross_entropy(logits, targets)
-        
+        if y is None: # inference
+            return logits, None
+        else: # training
+            B, T, vocab_size = logits.shape
+            logits = logits.view(-1, vocab_size)
+            targets = y.view(-1)
+            loss = F.cross_entropy(logits, targets)
+            
         return logits, loss
     
-    def generate(self)
-        pass
+    @torch.no_grad
+    def generate(self, x: torch.Tensor, max_new_tokens: int):
+        self.eval()
+        for _ in range(max_new_tokens):
+            # cut x to last block_size tokens
+            x_cond = x[:, -self.block_size:] # (B, T') where T' <= block_size
+            # get the predictions
+            logits, _ = self(x_cond) # (B, T', vocab_size)
+            # get the last tokens
+            logits = logits [:, -1, :] # (B, vocab_size)
+            
+            probs = F.softmax(logits, dim=-1) # (B, vocab_size)
+            
+            next_tok = torch.multinomial(probs, num_samples=1) # (B, 1)
+            
+            x = torch.cat([x, next_tok], dim=-1) # (B, T+1)
+        
+        return x
+            
+            
+            
+            
+            
         
