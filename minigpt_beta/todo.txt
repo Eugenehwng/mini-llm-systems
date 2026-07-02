@@ -1,0 +1,9 @@
+1. add support for BPE tokenization
+
+Add benchmarking code (memory, timing) -> profiling
+
+Add temperature sampling
+
+
+checkpointing
+

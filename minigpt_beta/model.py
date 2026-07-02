@@ -128,6 +128,9 @@ class GPT(nn.Module):
             x = torch.cat([x, next_tok], dim=-1) # (B, T+1)
         
         return x
+    
+    
+torch.nn.Module.state_dict
             
             
             

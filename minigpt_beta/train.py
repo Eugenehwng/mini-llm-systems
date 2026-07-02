@@ -8,7 +8,7 @@ from minigpt_beta.model import GPT, GPTConfig
 @dataclass
 class TrainConfig:    
     max_new_tokens: int = 10000    
-    max_iters: int = 5000
+    max_iters: int = 15000
     lr: float = 1e-3
     eval_iters: int = 200
     eval_interval: int = 100
@@ -47,22 +47,25 @@ if __name__ == "__main__":
     train_iter = make_iter(train_loader)
     val_iter   = make_iter(val_loader)
     
-    # summary(m, input_data=torch.randint(0, tokenizer.vocab_size, (GPTConfig.batch_size, GPTConfig.block_size)))
+    summary(m, input_data=torch.randint(0, tokenizer.vocab_size, (GPTConfig.batch_size, GPTConfig.block_size)))
 
-    m.train()
-    for iter in range(c.max_iters):
-        if iter % c.eval_interval == 0:
-            losses = estimate_loss(m, c.eval_iters)
-            print(f"step {iter}: train {losses['train']:.4f}, val {losses['val']:.4f}")
-            print("-" * 50)
-            ctx = torch.zeros((1, 1), dtype=torch.long)
-            sample = m.generate(ctx, max_new_tokens=200)[0].tolist()
-            print(f"sample: {tokenizer.decode(sample)}")
-            print("-" * 50)
+    # m.train()
+    # for iter in range(c.max_iters):
+    #     if iter % c.eval_interval == 0:
+    #         losses = estimate_loss(m, c.eval_iters)
+    #         print(f"step {iter}: train {losses['train']:.4f}, val {losses['val']:.4f}")
+    #         print("-" * 50)
+    #         ctx = torch.zeros((1, 1), dtype=torch.long)
+    #         sample = m.generate(ctx, max_new_tokens=200)[0].tolist()
+    #         print(f"sample: {tokenizer.decode(sample)}")
+    #         print("-" * 50)
         
-        xb, yb = next(train_iter)
-        _, loss = m(xb, yb)
+    #     xb, yb = next(train_iter)
+    #     _, loss = m(xb, yb)
         
-        optimizer.zero_grad(set_to_none=True) # clear previous iter's gradients
-        loss.backward() # calculate gradients
-        optimizer.step() # update parameters based on gradients
+    #     optimizer.zero_grad(set_to_none=True) # clear previous iter's gradients
+    #     loss.backward() # calculate gradients
+    #     optimizer.step() # update parameters based on gradients
+        
+    
+    
